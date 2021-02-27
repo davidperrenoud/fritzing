@@ -45,6 +45,7 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 #include "../program/programwindow.h"
 #include "../svg/svg2gerber.h"
 #include "../routingstatus.h"
+#include "../simulation/simulator.h"
 
 QT_BEGIN_NAMESPACE
 class QAction;
@@ -228,6 +229,9 @@ public:
 	void setFireQuoteDelay(int);
 	void setInitialTab(int);
 	void noSchematicConversion();
+	QString getSpiceNetlist(QString, QList< QList<class ConnectorItem *>* >&, QSet<class ItemBase *>& );
+	bool isSimulatorEnabled();
+	void enableSimulator(bool);
 
 public:
 	static void initNames();
@@ -501,6 +505,8 @@ protected:
 	void exportSvgWatermark(QString & svg, double res);
 	void exportEtchable(bool wantPDF, bool wantSVG);
 
+	QString getSpiceNetlist(QString simulationName);
+
 	virtual QList<QWidget*> getButtonsForView(ViewLayer::ViewID viewId);
 	const QString untitledFileName();
 	int &untitledFileCount();
@@ -546,6 +552,7 @@ protected:
 	class ExpandingLabel * createRoutingStatusLabel(SketchAreaWidget *);
 	SketchToolButton *createExportEtchableButton(SketchAreaWidget *parent);
 	SketchToolButton *createNoteButton(SketchAreaWidget *parent);
+	SketchToolButton *createSimulationButton(SketchAreaWidget *parent);
 	QWidget *createToolbarSpacer(SketchAreaWidget *parent);
 	SketchAreaWidget *currentSketchArea();
 	const QString fritzingTitle();
@@ -663,6 +670,8 @@ protected:
 	QPointer<class HtmlInfoView> m_infoView;
 	QPointer<QToolBar> m_toolbar;
 
+	class Simulator *m_simulator;
+
 	bool m_closing = false;
 	bool m_dontClose = false;
 	bool m_firstOpen = false;
@@ -749,6 +758,8 @@ protected:
 	QAction *m_selectAllAct = nullptr;
 	QAction *m_deselectAct = nullptr;
 	QAction *m_addNoteAct = nullptr;
+	QAction *m_simulationAct = nullptr;
+	QAction *m_resetSimulatorAct = nullptr;
 
 	// Part Menu
 	QMenu *m_partMenu = nullptr;
@@ -892,6 +903,7 @@ protected:
 	QList<SketchToolButton*> m_flipButtons;
 	QStackedWidget * m_activeLayerButtonWidget = nullptr;
 	QStackedWidget * m_viewFromButtonWidget = nullptr;
+	QList<SketchToolButton*> m_simulationButtons;
 
 	bool m_comboboxChanged = false;
 	bool m_restarting = false;

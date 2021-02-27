@@ -66,6 +66,7 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 #include "../utils/autoclosemessagebox.h"
 #include "../svg/gerbergenerator.h"
 #include "../processeventblocker.h"
+#include "../items/propertydef.h"
 
 static QString eagleActionType = ".eagle";
 static QString gerberActionType = ".gerber";
@@ -1314,19 +1315,55 @@ void MainWindow::exportSpiceNetlist() {
 		return; //Cancel pressed
 	}
 
-	static QRegExp curlies("\\{([^\\}]*)\\}");
-
 	QFileInfo fileInfo(m_fwFilename);
-	QString output = fileInfo.completeBaseName();
-	output += "\n";
+	QString spiceNetlist = getSpiceNetlist(fileInfo.completeBaseName());
+	//DebugDialog::debug(fileExt + " selected to export");
+	if(!alreadyHasExtension(fileName, spiceNetlistActionType)) {
+		fileName += spiceNetlistActionType;
+	}
 
-	QHash<ConnectorItem *, int> indexer;
+	TextUtils::writeUtf8(fileName, spiceNetlist);
+}
+
+/**
+ * Build and return a circuit description in spice based on the current circuit.
+ *
+ * Excludes parts that are not connected to other parts.
+ * @brief Create a circuit description in spice
+ * @param[in] simulationName Name of the simulation to be included in the first line of output
+ * @return A string that is a circuit description in spice
+ */
+QString MainWindow::getSpiceNetlist(QString simulationName) {
 	QList< QList<ConnectorItem *>* > netList;
+	QSet<ItemBase *> itemBases;
+	QString spiceNetlist = getSpiceNetlist(simulationName, netList, itemBases);
+	foreach (QList<ConnectorItem *> * net, netList) {
+		delete net;
+	}
+	netList.clear();
+	return spiceNetlist;
+}
+
+/**
+ * Build and return a circuit description in spice based on the current circuit.
+ * Additionally, the netlist and the parts to simulate are returned by pointers.
+ *
+ * Excludes parts that are not connected to other parts.
+ * @brief Create a circuit description in spice
+ * @param[in] simulationName Name of the simulation to be included in the first line of output
+ * @param[out] netList A list with all the nets of the circuit that are going to be simulated and each net is a list of the connectors that belong to that net
+ * @param[out] itemBases A set with the parts that are going to be simulated
+ * @return A string that is a circuit description in spice
+ */
+QString MainWindow::getSpiceNetlist(QString simulationName, QList< QList<class ConnectorItem *>* >& netList, QSet<class ItemBase *>& itemBases) {
+	QString output = simulationName + "\n";
+	static QRegExp curlies("\\{([^\\{\\}]*)\\}");
+	QHash<ConnectorItem *, int> indexer;
 	this->m_schematicGraphicsView->collectAllNets(indexer, netList, true, false);
 
 
 	//DebugDialog::debug("_______________");
-	QSet<ItemBase *> itemBases;
+
 	QList<ConnectorItem *> * ground = NULL;
 	foreach (QList<ConnectorItem *> * net, netList) {
 		if (net->count() < 2) continue;
@@ -1336,20 +1373,41 @@ void MainWindow::exportSpiceNetlist() {
 			if (ci->isGrounded()) {
 				ground = net;
 			}
-			itemBases.insert(ci->attachedTo());
+			if (!ci->attachedTo()->spice().isEmpty())
+				itemBases.insert(ci->attachedTo());
 		}
 		//DebugDialog::debug("_______________");
 	}
 
+	//If the circuit is built in the BB view, there is no ground. Then, try to find a negative terminal from a power supply as ground
+	if (!ground){
+		DebugDialog::debug("Netlist exporter: Trying to identify the negative connection of a power supply as ground");
+		foreach (QList<ConnectorItem *> * net, netList) {
+			if (ground) break;
+			if (net->count() < 2) continue;
+			foreach (ConnectorItem * ci, *net) {
+				if (ci->connectorSharedName().compare("-", Qt::CaseInsensitive) == 0) {
+					ground = net;
+					break;
+				}
+			}
+		}
+	}
+
 	if (ground) {
+		DebugDialog::debug("Netlist exporter: ground found");
 		// make sure ground is index zero
 		netList.removeOne(ground);
 		netList.prepend(ground);
+	} else {
+		if (netList.count() > 0) {
+			DebugDialog::debug("Netlist exporter: ground NOT found. The ground has been connected to the following connectors");
+			ground = netList.at(0);
+			foreach (ConnectorItem * connector, * ground) {
+				connector->debugInfo("ground set in: ");
+			}
+		}
 	}
-
-	//DebugDialog::debug("_______________");
-	//DebugDialog::debug("_______________");
-	DebugDialog::debug("_______________");
 
 	foreach (QList<ConnectorItem *> * net, netList) {
 		if (net->count() < 2) continue;
@@ -1357,7 +1415,6 @@ void MainWindow::exportSpiceNetlist() {
 		foreach (ConnectorItem * ci, *net) {
 			ci->debugInfo("net");
 		}
-
 		DebugDialog::debug("_______________");
 	}
 
@@ -1367,9 +1424,9 @@ void MainWindow::exportSpiceNetlist() {
 	foreach (ItemBase * itemBase, itemBases) {
 		QString spice = itemBase->spice();
 		if (spice.isEmpty()) continue;
-
+		int pos = 0;
 		while (true) {
-			int ix = curlies.indexIn(spice);
+			int ix = curlies.indexIn(spice, pos);
 			if (ix < 0) break;
 
 			QString token = curlies.cap(1).toLower();
@@ -1398,13 +1455,38 @@ void MainWindow::exportSpiceNetlist() {
 				}
 			}
 			else {
+				//Find the symbol of this property
+				QString symbol;
+				QHash<PropertyDef *, QString> propertyDefs;
+				PropertyDefMaster::initPropertyDefs(itemBase->modelPart(), propertyDefs);
+				foreach (PropertyDef * propertyDef, propertyDefs.keys()) {
+					if (token.compare(propertyDef->name, Qt::CaseInsensitive) == 0) {
+						symbol = propertyDef->symbol;
+						break;
+					}
+				}
+				//Find the value of the property
 				QVariant variant = itemBase->modelPart()->localProp(token);
 				if (variant.isNull()) {
 					replacement = itemBase->modelPart()->properties().value(token, "");
+					if(replacement.isEmpty()) {
+						//Leave it, probably is a brace expresion for the spice simulator
+						pos = ix + 1;
+						replacement = curlies.cap(0);
+						continue;
+					}
 				}
 				else {
 					replacement = variant.toString();
 				}
+				//Remove the symbol, if any. It is not mandatory:
+				//(Ngspice ignores letters immediately following a number that are not scale factors)
+				if (!symbol.isEmpty()) {
+					replacement.replace(symbol, "");
+				}
+				//Ngspice does not differenciate from m and M prefixes, u shuld be used for micro
+				replacement.replace("M", "Meg");
+				replacement.replace(TextUtils::MicroSymbol, "u");
 			}
 
 			spice.replace(ix, curlies.cap(0).count(), replacement);
@@ -1474,26 +1556,18 @@ void MainWindow::exportSpiceNetlist() {
 		output = output2;
 	}
 
-	output += ".TRAN 1ms 100ms\n";
+	output += ".options savecurrents\n";
+	output += ".OP\n";
+	output += "*.TRAN 1ms 100ms\n";
 	output += "* .AC DEC 100 100 1MEG\n";
-	output += ".END\n";
-
-	foreach (QList<ConnectorItem *> * net, netList) {
-		delete net;
-	}
-	netList.clear();
+	output += ".END";
 
 	QClipboard *clipboard = QApplication::clipboard();
 	if (clipboard) {
 		clipboard->setText(output);
 	}
 
-	//DebugDialog::debug(fileExt + " selected to export");
-	if(!alreadyHasExtension(fileName, spiceNetlistActionType)) {
-		fileName += spiceNetlistActionType;
-	}
-
-	TextUtils::writeUtf8(fileName, output);
+	return output;
 }
 
 void MainWindow::exportNetlist() {

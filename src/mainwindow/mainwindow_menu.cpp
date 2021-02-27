@@ -1128,6 +1128,14 @@ void MainWindow::createViewMenuActions(bool showWelcome) {
 	m_colorWiresByLengthAct->setCheckable(true);
 	connect(m_colorWiresByLengthAct, SIGNAL(triggered()), this, SLOT(colorWiresByLength()));
 
+	m_simulationAct = new QAction(tr("Simulate"), this);
+	m_simulationAct->setStatusTip(tr("Simulate the circuit (DC analysis)"));
+	connect(m_simulationAct, SIGNAL(triggered()), m_simulator, SLOT(simulate()));
+
+	m_resetSimulatorAct = new QAction(tr("Reset Simulator"), this);
+	m_resetSimulatorAct->setStatusTip(tr("Resets the simulator and removes simulator data"));
+	connect(m_resetSimulatorAct, SIGNAL(triggered()), m_simulator, SLOT(reset()));
+
 	m_showGridAct = new QAction(tr("Show Grid"), this);
 	m_showGridAct->setStatusTip(tr("Show the grid"));
 	m_showGridAct->setCheckable(true);

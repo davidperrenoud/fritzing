@@ -84,6 +84,7 @@ along with Fritzing.  If not, see <http://www.gnu.org/licenses/>.
 #include "../utils/zoomslider.h"
 #include "../partseditor/pemainwindow.h"
 #include "../help/firsttimehelpdialog.h"
+#include "../simulation/simulator.h"
 
 FTabWidget::FTabWidget(QWidget * parent) : QTabWidget(parent)
 {
@@ -479,6 +480,8 @@ void MainWindow::init(ReferenceModel *referenceModel, bool lockFiles) {
 	initWelcomeView();
 	initSketchWidgets(true);
 	initProgrammingWidget();
+
+	m_simulator = new Simulator(this);
 
 	m_undoView = new QUndoView();
 	m_undoGroup = new QUndoGroup(this);
@@ -1020,6 +1023,22 @@ SketchToolButton *MainWindow::createNoteButton(SketchAreaWidget *parent) {
 	return noteButton;
 }
 
+SketchToolButton *MainWindow::createSimulationButton(SketchAreaWidget *parent) {
+	QList<QAction*> actions;
+	actions << m_simulationAct << m_resetSimulatorAct;
+	SketchToolButton *simulationButton = new SketchToolButton("Simulation", parent, actions);
+	simulationButton->setObjectName("simulationButton");
+	simulationButton->setDefaultAction(m_simulationAct);
+	simulationButton->setText(tr("Simulate"));
+	simulationButton->setEnabledIcon();				// seems to need this to display button icon first time
+
+	if (!m_simulator->isEnabled())
+		simulationButton->hide();
+
+	m_simulationButtons << simulationButton;
+	return simulationButton;
+}
+
 SketchToolButton *MainWindow::createExportEtchableButton(SketchAreaWidget *parent) {
 	QList<QAction*> actions;
 	actions << m_exportEtchablePdfAct << m_exportEtchableSvgAct << m_exportGerberAct;
@@ -1091,6 +1110,7 @@ QList<QWidget*> MainWindow::getButtonsForView(ViewLayer::ViewID viewId) {
 		break;
 	}
 
+	retval << createSimulationButton(parent);
 	retval << createShareButton(parent);
 	return retval;
 }
@@ -3199,4 +3219,23 @@ void MainWindow::noSchematicConversion() {
 
 void MainWindow::setInitialTab(int tab) {
 	m_initialTab = tab;
+}
+
+bool MainWindow::isSimulatorEnabled() {
+	return m_simulator->isEnabled();
+}
+
+void MainWindow::enableSimulator(bool enable) {
+	if (m_simulator) {
+		m_simulator->enable(enable);
+	} else {
+		enable = false;
+	}
+
+	foreach(SketchToolButton* simButton, m_simulationButtons) {
+		if (simButton) {
+			m_simulationAct->setVisible(enable);
+			simButton->setVisible(enable);
+		}
+	}
 }

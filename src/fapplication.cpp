@@ -750,6 +750,7 @@ void FApplication::registerFonts() {
 	registerFont(":/resources/fonts/DroidSans-Bold.ttf", false);
 	registerFont(":/resources/fonts/DroidSansMono.ttf", false);
 	registerFont(":/resources/fonts/OCRA.ttf", true);
+	registerFont(":/resources/fonts/7segments/Segment7Standard.otf", true);
 
 	// "Droid Sans"
 	// "Droid Sans Mono"
@@ -1300,7 +1301,7 @@ void FApplication::preferencesAfter()
 
 	QList<Platform *> platforms = mainWindow->programmingWidget()->getAvailablePlatforms();
 
-	prefsDialog.initLayout(languages, platforms);
+	prefsDialog.initLayout(languages, platforms, mainWindow->isSimulatorEnabled());
 	if (QDialog::Accepted == prefsDialog.exec()) {
 		updatePrefs(prefsDialog);
 	}
@@ -1349,6 +1350,11 @@ void FApplication::updatePrefs(PrefsDialog & prefsDialog)
 						sketchWidget->setCurvyWires(hash.value(key).compare("1") == 0);
 					}
 				}
+			}
+		}
+		else if (key.compare("simulatorEnabled") == 0) {
+			foreach (MainWindow * mainWindow, mainWindows) {
+				mainWindow->enableSimulator(hash.value(key).toInt());
 			}
 		}
 	}
