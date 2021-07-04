@@ -74,6 +74,7 @@ QDir  FolderUtils::getApplicationSubFolder(QString search) {
 	path += "/" + search;
 	//DebugDialog::debug(QString("path %1").arg(path) );
 	QDir dir(path);
+#ifndef PKGDATADIR
 	while (!dir.exists()) {
 		// if we're running from the debug or release folder, try go up one to find things
 		dir.cdUp();
@@ -85,7 +86,7 @@ QDir  FolderUtils::getApplicationSubFolder(QString search) {
 
 		dir.setPath(dir.absolutePath() + "/" + search);
 	}
-
+#endif
 	return dir;
 }
 
@@ -117,6 +118,23 @@ QDir FolderUtils::getAppPartsSubFolder(QString search) {
 
 QDir FolderUtils::getAppPartsSubFolder2(QString search) {
 	if (m_partsPath.isEmpty()) {
+#ifdef PKGDATADIR
+		QStringList candidates;
+		candidates.append(QDir::homePath() + "/.local/share/fritzing");
+		candidates.append("/usr/local/share/fritzing");
+		candidates.append(m_appPath);
+		foreach (const QString &candidate, candidates) {
+			QList<QDir> dirList;
+			dirList.append(QDir(candidate + "/fritzing-parts"));
+			dirList.append(QDir(candidate + "/parts"));
+			foreach (const QDir &dir, dirList) {
+				m_partsPath = dir.absolutePath();
+				if (dir.exists()) {
+					goto setpath;
+				}
+			}
+		}
+#else
 		QDir dir = getApplicationSubFolder("fritzing-parts");
 		if (dir.exists() && dir.dirName().endsWith("fritzing-parts")) {
 			m_partsPath = dir.absolutePath();
@@ -127,9 +145,10 @@ QDir FolderUtils::getAppPartsSubFolder2(QString search) {
 				m_partsPath = dir.absolutePath();
 			}
 		}
+#endif
 	}
 
-
+setpath:
 	QString path = search.isEmpty() ? m_partsPath : m_partsPath + "/" + search;
 	//DebugDialog::debug(QString("path %1").arg(path) );
 	QDir dir(path);
@@ -215,8 +234,15 @@ const QString FolderUtils::applicationDirPath() {
 #ifdef Q_OS_WIN
 		m_appPath = QCoreApplication::applicationDirPath();
 #else
-		// look in standard Fritzing location (applicationDirPath and parent folders) then in standard linux locations
 		QStringList candidates;
+		// Look in standard Linux user and local administrator locations
+		candidates.append(QDir::homePath() + "/.local/share/fritzing");
+		candidates.append("/usr/local/share/fritzing");
+#ifdef PKGDATADIR
+		// look in installed location
+		candidates.append(QLatin1String(PKGDATADIR));
+#else
+		// look in standard Fritzing location (applicationDirPath and parent folders)
 		candidates.append(QCoreApplication::applicationDirPath());
 
 		QDir dir(QCoreApplication::applicationDirPath());
@@ -234,13 +260,8 @@ const QString FolderUtils::applicationDirPath() {
 			}
 		}
 
-#ifdef PKGDATADIR
-		candidates.append(QLatin1String(PKGDATADIR));
-#else
 		candidates.append("/usr/share/fritzing");
-		candidates.append("/usr/local/share/fritzing");
 #endif
-		candidates.append(QDir::homePath() + "/.local/share/fritzing");
 		foreach (QString candidate, candidates) {
 			DebugDialog::debug(QString("candidate:%1").arg(candidate));
 			QDir dir(candidate);
